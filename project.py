@@ -1,123 +1,77 @@
-import numpy as np
 import librosa
+import numpy as np
+import soundfile as sf
 import librosa.display
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
 
-# Compute STFT
-def compute_stft(signal, frame_size=2048, hop_size=512):
-    D = librosa.stft(signal, n_fft=frame_size, hop_length=hop_size)
-    return D
 
-# Compute ISTFT (Inverse STFT)
-def compute_istft(stft, hop_size=512):
-    signal = librosa.istft(stft, hop_length=hop_size)
-    return signal
+audio_path = "input_audio.wav"
+audio, sr = librosa.load(audio_path, sr=None)  # Loading with original sampling rate
 
-def plot_stft(stft):
-    magnitude = np.abs(stft)
-    plt.figure(figsize=(12, 8))
-    librosa.display.specshow(librosa.amplitude_to_db(magnitude, ref=np.max), x_axis='time', y_axis='log')
-    plt.colorbar(label='Amplitude (dB)')
-    plt.title('STFT Magnitude')
-    plt.show()
+# STFT parameters
+n_fft = 2048 
+hop_length = 512 
 
-def modify_stft_magnitude(stft, stretch_factor):
-    # Extract magnitude and phase from STFT
-    magnitude = np.abs(stft)
-    phase = np.angle(stft)
-    
-    # The number of time frames (columns in the magnitude matrix)
-    num_frames = magnitude.shape[1]
-    
-    # Compute new number of time frames after stretching
-    new_num_frames = int(num_frames * stretch_factor)
-    
-    # Create a new magnitude array with interpolated values
-    new_magnitude = np.zeros((magnitude.shape[0], new_num_frames))
-    
-    for freq_bin in range(magnitude.shape[0]):
-        # Interpolate magnitude for each frequency bin independently
-        new_magnitude[freq_bin, :] = np.interp(
-            np.linspace(0, num_frames, new_num_frames),
-            np.arange(num_frames),
-            magnitude[freq_bin, :]
-        )
-    
-    # Reconstruct the modified STFT by combining the new magnitude with the original phase
-    modified_stft = new_magnitude * np.exp(1j * phase)
-    
-    return modified_stft
+
+# Computing the STFT of input audio
+D = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
+magnitude = np.abs(D)  # Magnitude spectrogram
 
 
 
-def lsee_mstftm(signal, target_stft, max_iter=100, learning_rate=0.01):
-    # Initial STFT of the signal
-    stft = compute_stft(signal)
+
+def griffin_lim(magnitude, n_iterations, hop_length, win_length, fft_size):
+
+    # Initialize a random phase
+    phase = np.exp(1j * np.random.uniform(0, 2 * np.pi, magnitude.shape))
+    spectrogram = magnitude * phase
     
-    # Optimization loop (this is a basic example using gradient descent)
-    for i in range(max_iter):
-        # Compute the difference between the current and target STFT
-        diff = np.abs(stft) - np.abs(target_stft)
+    for i in range(n_iterations):
+        # Reconstruct the time-domain signal
+        signal = librosa.istft(spectrogram, hop_length=hop_length, win_length=win_length, window='hann')
         
-        # Objective function: sum of squared differences
-        loss = np.sum(np.square(diff))
+        # Compute STFT of the signal
+        spectrogram = librosa.stft(signal, n_fft=fft_size, hop_length=hop_length, win_length=win_length, window='hann')
         
-        # Compute gradients (this is a simplified example)
-        gradient = np.sign(diff)  # Simple gradient, use a more sophisticated one in practice
+        # Replace magnitude while keeping phase
+        spectrogram = magnitude * np.exp(1j * np.angle(spectrogram))
         
-        # Update the STFT (here we're using a simple gradient step)
-        stft -= learning_rate * gradient
-        
-        # Ensure the STFT stays in the correct domain (positive magnitudes)
-        stft = np.maximum(stft, 0)
-        
-        print(f"Iteration {i}, Loss: {loss}")
-        
-    return stft
+        # Debug: Check if phase changes
+        if i % 10 == 0:
+            print(f"Iteration {i}: Phase diff = {np.max(np.abs(np.angle(spectrogram) - np.angle(phase)))}")
+        phase = np.angle(spectrogram)
 
-def overlap_add_reconstruction(stft, hop_size=512):
-    # Reconstruct the time-domain signal from the modified STFT
-    reconstructed_signal = compute_istft(stft, hop_size=hop_size)
+    
+    # Final reconstruction
+    reconstructed_signal = librosa.istft(spectrogram, hop_length=hop_length, win_length=win_length, window='hann')
     return reconstructed_signal
 
-def time_scale_modify(signal, stretch_factor=1.5, frame_size=2048, hop_size=512):
-    # Compute the STFT of the signal
-    stft = compute_stft(signal, frame_size=frame_size, hop_size=hop_size)
-    
-    # Modify the STFT (for example, changing the magnitude)
-    modified_stft = modify_stft_magnitude(stft, stretch_factor)
-    
-    # Optionally, apply LSEE-MSTFTM for better optimization
-    # target_stft = some_target_stft # this could be a target signal's STFT
-    # refined_stft = lsee_mstftm(signal, target_stft)  # refine the STFT iteratively
-    
-    # Reconstruct the signal from the modified STFT
-    reconstructed_signal = overlap_add_reconstruction(modified_stft, hop_size=hop_size)
-    
-    return reconstructed_signal
+# Parameters for Griffin-Lim
+n_iterations = 50  # Number of iterations for Griffin-Lim
+reconstructed_audio = griffin_lim(magnitude, n_iterations, hop_length, win_length=n_fft, fft_size=n_fft)
 
-def plot_signals(original_signal, modified_signal, sr):
-    plt.figure(figsize=(10, 6))
-    plt.subplot(2, 1, 1)
-    librosa.display.waveshow(original_signal, sr=sr)
-    plt.title("Original Signal")
-    
-    plt.subplot(2, 1, 2)
-    librosa.display.waveshow(modified_signal, sr=sr)
-    plt.title("Modified Signal (Time-Scaled)")
-    
-    plt.tight_layout()
-    plt.show()
+# Save the reconstructed audio
+sf.write("reconstructed_audio.wav", reconstructed_audio, sr)
 
+# Compute STFT of the reconstructed audio for visualization
+reconstructed_D = librosa.stft(reconstructed_audio, n_fft=n_fft, hop_length=hop_length)
 
-# Load an example audio signal
-filename = "new.wav"
-signal, sr = librosa.load(filename, sr=None)
+# Plot both original and reconstructed spectrograms
+plt.figure(figsize=(14, 8))
 
-# Apply time-scale modification
-stretch_factor = 1.5  # Stretch by 1.5x (change as needed)
-modified_signal = time_scale_modify(signal, stretch_factor=stretch_factor)
+# Original spectrogram
+plt.subplot(2, 1, 1)
+librosa.display.specshow(librosa.amplitude_to_db(magnitude, ref=np.max),
+                         sr=sr, hop_length=hop_length, y_axis='log', x_axis='time')
+plt.title("Original Magnitude Spectrogram")
+plt.colorbar(format='%+2.0f dB')
 
-# Plot original vs modified signal
-plot_signals(signal, modified_signal, sr)
+# Reconstructed spectrogram
+plt.subplot(2, 1, 2)
+librosa.display.specshow(librosa.amplitude_to_db(np.abs(reconstructed_D), ref=np.max),
+                         sr=sr, hop_length=hop_length, y_axis='log', x_axis='time')
+plt.title("Reconstructed Magnitude Spectrogram")
+plt.colorbar(format='%+2.0f dB')
+
+plt.tight_layout()
+plt.show()
