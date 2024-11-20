@@ -1,14 +1,14 @@
-import librosa
-import soundfile as sf
+import librosa #for audio processing
+import soundfile as sf #read write audio files
 import numpy as np
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox #for gui
 import matplotlib.pyplot as plt
 import librosa.display
 from scipy.signal import butter, lfilter
 
 # Function to load audio file
-def load_audio(audio_path):
+def load_audio(audio_path):#Loads an audio file and returns the audio signal (audio) and its sampling rate (sr)
     try:
         audio, sr = librosa.load(audio_path, sr=None)
         return audio, sr
@@ -18,7 +18,7 @@ def load_audio(audio_path):
         raise ValueError(f"An error occurred while loading the audio: {e}")
 
 # Function to check the length of audio
-def check_audio_length(audio, sr, min_length_sec=1):
+def check_audio_length(audio, sr, min_length_sec=1): #Ensures the audio file is at least 1 second long otherwise error of audio being short
     duration = len(audio) / sr
     if duration < min_length_sec:
         raise ValueError(f"Audio is too short ({duration:.2f}s). Minimum length is {min_length_sec}s.")
@@ -26,7 +26,7 @@ def check_audio_length(audio, sr, min_length_sec=1):
     return True
 
 # Plot the waveform of audio
-def plot_waveform(audio, sr):
+def plot_waveform(audio, sr): #Plots the audio signal's waveform
     plt.figure(figsize=(10, 4))
     librosa.display.waveshow(audio, sr=sr)
     plt.title("Audio Waveform")
@@ -36,12 +36,12 @@ def plot_waveform(audio, sr):
     plt.show()
 
 # Compute Short-Time Fourier Transform (STFT)
-def compute_stft(audio, sr, n_fft=2048, hop_length=512, window=np.hamming):
-    D = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, window=window)
+def compute_stft(audio, sr, n_fft=2048, hop_length=512, window=np.hamming): # Computes the Short-Time Fourier Transform (STFT) of the audio signal, producing a spectrogram.
+    D = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, window=window) #Allows configuration of the FFT size (n_fft), hop length, and windowing function.
     return np.abs(D)
 
 # Plot the spectrogram
-def plot_spectrogram(magnitude, sr, hop_length):
+def plot_spectrogram(magnitude, sr, hop_length):#Plots a spectrogram of the audio signal in decibels for a visual representation of frequencies over time
     magnitude_db = librosa.amplitude_to_db(magnitude, ref=np.max)
     plt.figure(figsize=(12, 6))
     librosa.display.specshow(
@@ -55,7 +55,7 @@ def plot_spectrogram(magnitude, sr, hop_length):
     plt.show()
 
 # Apply noise reduction by estimating a noise profile and performing spectral subtraction
-def noise_reduction(audio, sr):
+def noise_reduction(audio, sr): #Reduces noise by subtracting a noise profile (estimated from the first second of audio) from the STFT of the audio signal.
     # Estimate a noise profile using the first few seconds
     noise_clip = audio[:sr]  # Take the first second as the noise profile
     noise_stft = compute_stft(noise_clip, sr)
@@ -73,7 +73,7 @@ def noise_reduction(audio, sr):
     return cleaned_audio
 
 # Apply frequency filtering (bandpass filter)
-def bandpass_filter(audio, sr, low_cutoff=500, high_cutoff=3000, order=6):
+def bandpass_filter(audio, sr, low_cutoff=500, high_cutoff=3000, order=6): #Applies a bandpass filter to isolate frequencies between 500 Hz and 3000 Hz.
     nyquist = 0.5 * sr
     low = low_cutoff / nyquist
     high = high_cutoff / nyquist
@@ -84,12 +84,12 @@ def bandpass_filter(audio, sr, low_cutoff=500, high_cutoff=3000, order=6):
     return filtered_audio
 
 # Apply gain enhancement
-def apply_gain(audio, gain_factor=2.0):
+def apply_gain(audio, gain_factor=2.0):#Enhances audio by multiplying its amplitude with a gain factor (default: 2.0).
     return audio * gain_factor
 
 # Perform Griffin-Lim reconstruction
-def griffin_lim_reconstruction(magnitude, sr, n_fft=2048, hop_length=512, iterations=32, tol=1e-6):
-    phase = np.exp(2j * np.pi * np.random.rand(*magnitude.shape))
+def griffin_lim_reconstruction(magnitude, sr, n_fft=2048, hop_length=512, iterations=32, tol=1e-6):#Reconstructs an audio signal from a modified magnitude spectrogram
+    phase = np.exp(2j * np.pi * np.random.rand(*magnitude.shape)) 
     previous_audio = None
     for i in range(iterations):
         complex_spectrogram = magnitude * phase
